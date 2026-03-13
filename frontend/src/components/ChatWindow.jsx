@@ -10,40 +10,41 @@ import { useEffect, useRef } from 'react'
 export default function ChatWindow({ messages, loading }) {
   const bottomRef = useRef(null)
 
-  // Auto-scroll to the newest message
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+    <div className="chat-scroll flex-1 overflow-y-auto px-4 py-6 space-y-5 max-w-3xl w-full mx-auto">
       {messages.length === 0 && !loading && (
-        <p className="text-center text-gray-400 text-sm mt-16 select-none">
-          Ask anything about your personal data.
+        <p className="text-center text-zinc-600 text-sm select-none mt-8">
+          No messages yet. Start a conversation below.
         </p>
       )}
 
       {messages.map((msg, i) => (
         <div
           key={i}
-          className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          className={`flex ${
+            msg.role === 'user' ? 'justify-end' : 'justify-start'
+          }`}
         >
           <div
-            className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap shadow-sm ${
+            className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
               msg.role === 'user'
-                ? 'bg-indigo-600 text-white rounded-br-sm'
-                : 'bg-white text-gray-800 border border-gray-200 rounded-bl-sm'
+                ? 'bg-blue-600 text-white rounded-br-sm shadow-md'
+                : 'bg-zinc-800 text-zinc-100 rounded-bl-sm shadow-md'
             }`}
           >
             <p>{msg.text}</p>
 
-            {/* Source citations under AI messages */}
+            {/* Source citations */}
             {msg.role === 'ai' && msg.sources && msg.sources.length > 0 && (
-              <div className="mt-2 pt-2 border-t border-gray-200">
-                <p className="text-xs text-gray-400 font-medium mb-1">Sources</p>
+              <div className="mt-3 pt-2 border-t border-zinc-700/50">
+                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold mb-1">Sources</p>
                 <ul className="space-y-0.5">
                   {msg.sources.map((src, j) => (
-                    <li key={j} className="text-xs text-gray-400 truncate" title={src}>
+                    <li key={j} className="text-[11px] text-zinc-500 truncate" title={src}>
                       {src.split(/[\\/]/).pop()}
                     </li>
                   ))}
@@ -57,11 +58,11 @@ export default function ChatWindow({ messages, loading }) {
       {/* Typing indicator */}
       {loading && (
         <div className="flex justify-start">
-          <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm">
-            <div className="flex space-x-1 items-center h-4">
-              <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:-0.3s]" />
-              <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:-0.15s]" />
-              <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" />
+          <div className="bg-zinc-800 rounded-2xl rounded-bl-sm px-4 py-3 shadow-md">
+            <div className="flex space-x-1.5 items-center h-4">
+              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:-0.3s]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:-0.15s]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce" />
             </div>
           </div>
         </div>
