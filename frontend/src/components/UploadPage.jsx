@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { listFiles, uploadFiles } from '../api/ingest'
 
-const ACCEPTED = '.txt,.json,.csv'
+const ACCEPTED = '.txt,.json,.csv,.pdf'
 const MAX_MB = 10
 
 function fmt(bytes) {
@@ -31,7 +31,7 @@ export default function UploadPage() {
   function addFiles(fileList) {
     const incoming = Array.from(fileList).filter((f) => {
       const ext = f.name.split('.').pop().toLowerCase()
-      return ['txt', 'json', 'csv'].includes(ext) && f.size <= MAX_MB * 1024 * 1024
+      return ['txt', 'json', 'csv', 'pdf'].includes(ext) && f.size <= MAX_MB * 1024 * 1024
     })
     setQueue((prev) => {
       const names = new Set(prev.map((f) => f.name))
@@ -86,7 +86,7 @@ export default function UploadPage() {
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
         </svg>
         <p className="text-zinc-300 font-medium">Drop files here or click to browse</p>
-        <p className="text-zinc-600 text-sm">.txt · .json · .csv · max {MAX_MB} MB each</p>
+        <p className="text-zinc-600 text-sm">.txt · .json · .csv · .pdf · max {MAX_MB} MB each</p>
         <input
           ref={inputRef}
           type="file"

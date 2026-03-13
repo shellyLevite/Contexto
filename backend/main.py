@@ -14,7 +14,6 @@ Start with:
 """
 
 import logging
-import shutil
 import time
 from pathlib import Path
 
@@ -30,6 +29,7 @@ from ingest import (
     _doc_type,
     _record_metadata,
 )
+from parsers import load_documents
 from rag import query as rag_query
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -104,7 +104,7 @@ def chat(body: ChatRequest):
 
 # ── Ingest routes ─────────────────────────────────────────────────────────────
 
-ALLOWED_SUFFIXES = set(SUPPORTED_EXTS)  # {".txt", ".json", ".csv"}
+ALLOWED_SUFFIXES = set(SUPPORTED_EXTS)  # {'.txt', '.json', '.csv', '.pdf'}
 MAX_FILE_SIZE = 10 * 1024 * 1024        # 10 MB per file
 
 
@@ -131,11 +131,12 @@ def list_files():
 @app.post("/api/ingest", response_model=IngestResponse, tags=["ingest"])
 async def ingest_files(files: list[UploadFile]):
     """
-    Upload one or more .txt / .json / .csv files to data_export/ and run
+    Upload one or more .txt / .json / .csv / .pdf files to data_export/ and run
     the embedding + upsert pipeline on each accepted file.
+    Automatically detects WhatsApp exports and PDF files.
     """
     import os
-    from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreIndex
+    from llama_index.core import StorageContext, VectorStoreIndex
     from llama_index.core.node_parser import SentenceSplitter
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
     from llama_index.vector_stores.supabase import SupabaseVectorStore
@@ -148,7 +149,6 @@ async def ingest_files(files: list[UploadFile]):
 
     ingested: list[str] = []
     skipped: list[str] = []
-
     saved_paths: list[Path] = []
 
     for upload in files:
@@ -171,7 +171,11 @@ async def ingest_files(files: list[UploadFile]):
     if not saved_paths:
         return IngestResponse(ingested=[], skipped=skipped)
 
-    # Run embedding pipeline on the newly saved files only
+    # Parse files with the appropriate parser (WhatsApp / PDF / generic)
+    documents = []
+    for p in saved_paths:
+        documents.extend(load_documents(p))
+
     embed_model_name = os.environ.get("EMBED_MODEL_NAME", "BAAI/bge-small-en-v1.5")
     embed_model = HuggingFaceEmbedding(model_name=embed_model_name)
 
@@ -182,9 +186,6 @@ async def ingest_files(files: list[UploadFile]):
     )
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     splitter = SentenceSplitter(chunk_size=512, chunk_overlap=50)
-
-    reader = SimpleDirectoryReader(input_files=[str(p) for p in saved_paths])
-    documents = reader.load_data()
 
     for doc in documents:
         src = doc.metadata.get("file_path") or doc.metadata.get("file_name", "unknown")

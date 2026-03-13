@@ -254,3 +254,36 @@ Then open **http://localhost:5173** in your browser.
 | `frontend/src/api/ingest.js` | Fetch wrappers for upload and file listing |
 | `frontend/src/components/UploadPage.jsx` | Full drag-and-drop upload UI |
 | `frontend/src/App.jsx` | Tab bar wiring Chat ↔ Upload views |
+
+---
+
+## Phase 8 — Advanced Data Sources (PDF & WhatsApp) ✅
+
+### What was done
+- Created `backend/parsers.py` — smart document loader dispatcher:
+  - **PDF** → `PyMuPDF` (`fitz`), one Document per page
+  - **WhatsApp export** → custom regex parser, one Document per message with timestamp + sender embedded in both text content and metadata (enables date-specific RAG queries)
+  - **Everything else** → LlamaIndex `SimpleDirectoryReader` (as before)
+- Updated `backend/ingest.py` — uses `parsers.load_documents()`, added `.pdf` to `SUPPORTED_EXTS`
+- Updated `backend/main.py` — uses `parsers.load_documents()`, added `.pdf` to `ALLOWED_SUFFIXES`
+- Updated `frontend/src/components/UploadPage.jsx` — file picker and filter now accept `.pdf`
+- Added `pymupdf>=1.24.0` to `requirements.txt`
+
+### New package to install
+```bash
+cd backend
+.\venv\Scripts\activate
+pip install pymupdf
+```
+
+### WhatsApp format autodetection
+Drop any WhatsApp `.txt` export into `data_export/` (or upload via UI). The parser detects the WA timestamp pattern automatically and preserves each message as `[date time] Sender: text`, enabling queries like:
+> *"Who talked to me on March 12th?"*
+> *"What did John say last Tuesday?"*
+
+### Key files
+| File | Purpose |
+|---|---|
+| `backend/parsers.py` | Smart document loader (PDF, WhatsApp, generic) |
+| `backend/ingest.py` | Updated to use parsers, supports .pdf |
+| `backend/main.py` | Updated ingest route uses parsers |

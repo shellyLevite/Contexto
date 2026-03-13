@@ -1,12 +1,11 @@
 """
 ingest.py — ETL pipeline for the Personal Context Engine.
 
-Reads all .txt, .json, and .csv files from data_export/,
-chunks them with SentenceSplitter, embeds them with a local
-HuggingFace model, and upserts into Supabase (vecs schema
-via LlamaIndex SupabaseVectorStore).
+Reads all supported files from data_export/, parses them with the
+appropriate parser (WhatsApp, PDF, or generic), embeds them with a
+local HuggingFace model, and upserts into Supabase.
 
-Also records file-level metadata in public.documents_metadata.
+Supported types: .txt (plain or WhatsApp export), .json, .csv, .pdf
 
 Run with:
     cd backend
@@ -22,12 +21,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreIndex
+from llama_index.core import StorageContext, VectorStoreIndex
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.supabase import SupabaseVectorStore
 
 from db import supabase
+from parsers import load_documents
 
 # ── Config ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -38,7 +38,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).parent.parent / "data_export"
-SUPPORTED_EXTS = [".txt", ".json", ".csv"]
+SUPPORTED_EXTS = [".txt", ".json", ".csv", ".pdf"]
 COLLECTION_NAME = "documents"
 EMBED_DIM = 384
 CHUNK_SIZE = 512
@@ -50,7 +50,7 @@ CHUNK_OVERLAP = 50
 def _doc_type(file_path: str) -> str:
     """Return the normalised document type from a file extension."""
     suffix = Path(file_path).suffix.lower().lstrip(".")
-    return suffix if suffix in ("txt", "json", "csv") else "txt"
+    return suffix if suffix in ("txt", "json", "csv", "pdf") else "txt"
 
 
 def _record_metadata(source: str, doc_type: str) -> None:
@@ -90,22 +90,19 @@ def main() -> None:
     supported_files = [f for f in DATA_DIR.iterdir() if f.suffix.lower() in SUPPORTED_EXTS]
     if not supported_files:
         logger.warning(
-            "No supported files (.txt / .json / .csv) found in %s — nothing to ingest.",
+            "No supported files (.txt / .json / .csv / .pdf) found in %s — nothing to ingest.",
             DATA_DIR,
         )
         return
 
     logger.info("Found %d file(s) to ingest in %s", len(supported_files), DATA_DIR)
 
-    # ── 1. Load documents ─────────────────────────────────────────────────────
+    # ── 1. Load documents (routing: WhatsApp / PDF / generic) ───────────────────────
     logger.info("Loading documents ...")
-    reader = SimpleDirectoryReader(
-        input_dir=str(DATA_DIR),
-        required_exts=SUPPORTED_EXTS,
-        recursive=False,
-    )
-    documents = reader.load_data()
-    logger.info("Loaded %d document(s).", len(documents))
+    documents = []
+    for f in supported_files:
+        documents.extend(load_documents(f))
+    logger.info("Loaded %d document(s) total.", len(documents))
 
     # ── 2. Record file-level metadata ─────────────────────────────────────────
     for doc in documents:
