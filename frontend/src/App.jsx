@@ -30,11 +30,11 @@ function App() {
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100">
 
       {/* ── Title block ── */}
-      <div className="shrink-0 pt-10 pb-6 text-center">
-        <h1 className="text-5xl md:text-6xl font-extrabold tracking-tighter bg-gradient-to-r from-blue-500 to-cyan-400 bg-clip-text text-transparent">
+      <div className="shrink-0 pt-10 pb-6 text-center px-4">
+        <h1 className="text-5xl md:text-6xl font-extrabold tracking-tighter text-center bg-gradient-to-r from-blue-500 to-cyan-400 bg-clip-text text-transparent">
           CONTEXTO
         </h1>
-        <p className="text-lg md:text-xl text-zinc-400 mt-3">
+        <p className="text-lg md:text-xl text-zinc-400 text-center mt-3">
           Your private AI assistant — ask anything about your personal data
         </p>
       </div>
