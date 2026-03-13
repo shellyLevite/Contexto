@@ -110,7 +110,7 @@ LLM_MODEL=llama3-8b-8192
 
 ---
 
-## Phase 3 — Data Ingestion Pipeline (ETL & Embeddings)
+## Phase 3 — Data Ingestion Pipeline (ETL & Embeddings) ✅
 
 ### Plan
 - `backend/ingest.py` reads all files from `data_export/`
@@ -136,7 +136,7 @@ python ingest.py
 
 ---
 
-## Phase 4 — Retrieval & AI Generation (The RAG Core)
+## Phase 4 — Retrieval & AI Generation (The RAG Core) ✅
 
 ### Plan
 - `backend/rag.py` exposes a single `query(question: str) -> str` function
@@ -162,7 +162,7 @@ User question
 
 ---
 
-## Phase 5 — API Endpoints (FastAPI)
+## Phase 5 — API Endpoints (FastAPI) ✅
 
 ### Plan
 - `backend/main.py` is the FastAPI application entry point
