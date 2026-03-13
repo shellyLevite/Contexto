@@ -188,7 +188,7 @@ uvicorn main:app --reload --port 8000
 
 ---
 
-## Phase 6 — Frontend Development (React + Tailwind)
+## Phase 6 — Frontend Development (React + Tailwind) ✅
 
 ### Plan
 - Install and configure **Tailwind CSS** in the Vite project
