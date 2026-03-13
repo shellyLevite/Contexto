@@ -235,3 +235,22 @@ npm run dev
 ```
 
 Then open **http://localhost:5173** in your browser.
+
+---
+
+## Phase 7 — Indexing UI (File Upload from Browser) ✅
+
+### What was done
+- Added `POST /api/ingest` endpoint to `backend/main.py` — accepts multipart file uploads (`.txt`, `.json`, `.csv`, max 10 MB each), saves to `data_export/`, and runs the embedding + upsert pipeline immediately
+- Added `GET /api/files` endpoint — lists files currently in `data_export/`
+- Created `frontend/src/api/ingest.js` — `uploadFiles()` and `listFiles()` fetch wrappers
+- Created `frontend/src/components/UploadPage.jsx` — drag-and-drop file zone, staged upload queue, per-file remove, ingestion result banner, existing file list
+- Added a **Chat / Upload Data** pill tab-bar to `App.jsx` to switch between the two views
+
+### Key files
+| File | Purpose |
+|---|---|
+| `backend/main.py` | `POST /api/ingest`, `GET /api/files` routes |
+| `frontend/src/api/ingest.js` | Fetch wrappers for upload and file listing |
+| `frontend/src/components/UploadPage.jsx` | Full drag-and-drop upload UI |
+| `frontend/src/App.jsx` | Tab bar wiring Chat ↔ Upload views |
