@@ -112,9 +112,8 @@ def health():
     """Simple liveness check."""
     return {"status": "ok"}
 
+
 print("[STARTUP] Health route registered", flush=True)
-    """Simple liveness check."""
-    return {"status": "ok"}
 
 
 @app.post("/api/chat", response_model=ChatResponse, tags=["chat"])
