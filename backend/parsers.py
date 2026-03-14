@@ -22,36 +22,55 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 # WhatsApp export parser
 # ─────────────────────────────────────────────────────────────────────────────
-# Handles the two most common WhatsApp .txt export formats:
+# Handles WhatsApp .txt export formats across locales and platforms.
 #
-#   Android / modern:
+#   Android / modern (dash separator, no brackets):
 #     3/12/25, 14:32 - John Doe: Hey there!
 #     12/03/2025, 2:32 PM - John Doe: Hey there!
 #
-#   iOS / old (square brackets):
+#   iOS / EU locale (square brackets, dot or slash date separator):
 #     [3/12/25, 14:32:05] John Doe: Hey there!
+#     [31.10.2022, 1:39:11] Shelly🌸: Hey there!
+#
+# Date separator: [./] supports both '.' (EU/IL) and '/' (US/UK) formats.
+# Year: \d{2,4} handles both 2-digit (25) and 4-digit (2025) years.
+# Sender: [^\[\]:] allows Hebrew, emojis, and special chars; stops at the
+#         first ':' that acts as the sender/message delimiter.
+# BiDi note: WhatsApp text exports store characters in logical (Unicode)
+#   order regardless of display direction. The regex operates on logical
+#   codepoints, so Hebrew (RTL) and English (LTR) text mix without issues.
+#   Files are always read as UTF-8 (see load_documents) to preserve all
+#   Unicode characters including Hebrew, emojis, and RTL marks.
 #
 # We preserve the full timestamp + sender in the Document text so that
 # the LLM can answer date-specific questions ("who talked to me on March 12?").
 
+# Shared sub-patterns for readability
+_DATE   = r"\d{1,2}[./]\d{1,2}[./]\d{2,4}"           # 31.10.2022 or 3/12/25
+_TIME   = r"\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?"    # 1:39:11 or 2:32 PM
+_BIDI   = r"[\u200e\u200f\u202a-\u202e]*"              # optional BiDi directional control chars
+_SENDER = r"[^\[\]:\u200e\u200f\u202a-\u202e]+"        # Hebrew + emojis; excludes BiDi marks
+_MSG    = r".+"                                         # rest of line
+
+# Each entry is (compiled_pattern, time_first).
+#   time_first=False → capture groups are (date, time, sender, msg)
+#   time_first=True  → capture groups are (time, date, sender, msg)
 _WA_PATTERNS = [
-    # Android: "3/12/25, 14:32 - Sender: msg"   or   "3/12/25, 2:32 PM - Sender: msg"
-    re.compile(
-        r"^(\d{1,2}/\d{1,2}/\d{2,4}),\s+"   # date
-        r"(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)"  # time
-        r"\s+-\s+"                             # separator
-        r"([^:]+):\s+"                         # sender
-        r"(.+)$",                              # message
-        re.MULTILINE,
-    ),
-    # iOS: "[3/12/25, 14:32:05] Sender: msg"
-    re.compile(
-        r"^\[(\d{1,2}/\d{1,2}/\d{2,4}),\s+"
-        r"(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)\]"
-        r"\s+([^:]+):\s+"
-        r"(.+)$",
-        re.MULTILINE,
-    ),
+    # Android: "3/12/25, 14:32 - Sender: msg"
+    (re.compile(
+        rf"^({_DATE}),\s+({_TIME})\s+-\s+({_SENDER}):\s*{_BIDI}({_MSG})$",
+        re.MULTILINE | re.UNICODE,
+    ), False),
+    # iOS / EU (date first): "[31.10.2022, 1:39:11] Shelly🌸: msg"
+    (re.compile(
+        rf"^\[({_DATE}),\s+({_TIME})\]\s*({_SENDER}):\s*{_BIDI}({_MSG})$",
+        re.MULTILINE | re.UNICODE,
+    ), False),
+    # IL reversed (time first): "[12:42:00 ,1.11.2022] רונשלי 🖤💍: msg"
+    (re.compile(
+        rf"^\[({_TIME})\s*,\s*({_DATE})\]\s*({_SENDER}):\s*{_BIDI}({_MSG})$",
+        re.MULTILINE | re.UNICODE,
+    ), True),
 ]
 
 # Minimum number of matching lines to classify a file as a WhatsApp export
@@ -60,7 +79,7 @@ _WA_MIN_MATCHES = 3
 
 def _is_whatsapp_export(text: str) -> bool:
     """Return True if *text* looks like a WhatsApp export file."""
-    for pattern in _WA_PATTERNS:
+    for pattern, _ in _WA_PATTERNS:
         if len(pattern.findall(text)) >= _WA_MIN_MATCHES:
             return True
     return False
@@ -77,18 +96,28 @@ def _parse_whatsapp(path: Path, text: str) -> list[Document]:
     """
     docs: list[Document] = []
 
-    for pattern in _WA_PATTERNS:
+    for pattern, time_first in _WA_PATTERNS:
         matches = pattern.findall(text)
         if len(matches) >= _WA_MIN_MATCHES:
-            for date_str, time_str, sender, message in matches:
+            for m in matches:
+                if time_first:
+                    time_str, date_str, sender, message = m
+                else:
+                    date_str, time_str, sender, message = m
                 sender = sender.strip()
                 message = message.strip()
 
                 # Normalise timestamp into a readable, sortable string
                 timestamp = f"{date_str} {time_str}".strip()
 
-                # The chunk text the LLM will read — includes date + sender inline
-                chunk_text = f"[{timestamp}] {sender}: {message}"
+                # The chunk text the LLM will read — structured so the embedding
+                # captures date, sender, and message content for semantic search.
+                chunk_text = (
+                    f"Date: {date_str}\n"
+                    f"Time: {time_str}\n"
+                    f"Sender: {sender}\n"
+                    f"Message: {message}"
+                )
 
                 docs.append(
                     Document(

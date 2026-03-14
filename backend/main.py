@@ -25,6 +25,7 @@ from ingest import (
     COLLECTION_NAME,
     DATA_DIR,
     EMBED_DIM,
+    EMBED_MODEL,
     SUPPORTED_EXTS,
     _doc_type,
     _record_metadata,
@@ -176,8 +177,7 @@ async def ingest_files(files: list[UploadFile]):
     for p in saved_paths:
         documents.extend(load_documents(p))
 
-    embed_model_name = os.environ.get("EMBED_MODEL_NAME", "BAAI/bge-small-en-v1.5")
-    embed_model = HuggingFaceEmbedding(model_name=embed_model_name)
+    embed_model = HuggingFaceEmbedding(model_name=EMBED_MODEL)
 
     vector_store = SupabaseVectorStore(
         postgres_connection_string=db_url,
@@ -187,9 +187,12 @@ async def ingest_files(files: list[UploadFile]):
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     splitter = SentenceSplitter(chunk_size=512, chunk_overlap=50)
 
+    seen_sources: set[str] = set()
     for doc in documents:
         src = doc.metadata.get("file_path") or doc.metadata.get("file_name", "unknown")
-        _record_metadata(src, _doc_type(src))
+        if src not in seen_sources:
+            seen_sources.add(src)
+            _record_metadata(src, _doc_type(src))
 
     VectorStoreIndex.from_documents(
         documents,
@@ -202,3 +205,40 @@ async def ingest_files(files: list[UploadFile]):
     ingested = [p.name for p in saved_paths]
     logger.info("Ingest complete: %s", ingested)
     return IngestResponse(ingested=ingested, skipped=skipped)
+
+
+@app.delete("/api/files/{filename}", tags=["ingest"])
+def delete_file(filename: str):
+    """
+    Delete a file from data_export/, remove its vectors from the vector store
+    (via the delete_vectors_by_file SQL function), and clear its documents_metadata row.
+    """
+    import os
+    from db import supabase
+
+    # Sanitise: prevent path traversal
+    safe_name = Path(filename).name
+    if safe_name != filename or safe_name.startswith("."):
+        raise HTTPException(status_code=400, detail="Invalid filename.")
+
+    file_path = DATA_DIR / safe_name
+
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail=f"{safe_name!r} not found in data_export/.")
+
+    db_url = os.environ.get("SUPABASE_DB_URL")
+    if not db_url:
+        raise HTTPException(status_code=500, detail="SUPABASE_DB_URL not configured.")
+
+    # 1. Delete vectors via the public SQL function (see setup SQL below)
+    supabase.rpc("delete_vectors_by_file", {"p_file_name": safe_name}).execute()
+
+    # 2. Remove the metadata lock rows (match by full path and by name suffix)
+    supabase.table("documents_metadata").delete().eq("source", str(file_path)).execute()
+    supabase.table("documents_metadata").delete().like("source", f"%{safe_name}").execute()
+
+    # 3. Delete the physical file
+    file_path.unlink()
+    logger.info("Deleted file and metadata: %s", safe_name)
+
+    return {"deleted": safe_name}

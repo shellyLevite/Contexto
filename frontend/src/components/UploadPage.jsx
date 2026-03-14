@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { listFiles, uploadFiles } from '../api/ingest'
+import { deleteFile, listFiles, uploadFiles } from '../api/ingest'
 
 const ACCEPTED = '.txt,.json,.csv,.pdf'
 const MAX_MB = 10
@@ -16,6 +16,7 @@ export default function UploadPage() {
   const [dragging, setDragging] = useState(false)
   const [queue, setQueue] = useState([])        // files staged for upload
   const [uploading, setUploading] = useState(false)
+  const [deleting, setDeleting] = useState(null) // filename being deleted
   const [result, setResult] = useState(null)    // { ingested, skipped }
   const [error, setError] = useState(null)
   const inputRef = useRef(null)
@@ -64,6 +65,21 @@ export default function UploadPage() {
       setError(err.message)
     } finally {
       setUploading(false)
+    }
+  }
+
+  async function handleDelete(filename) {
+    if (deleting) return
+    setDeleting(filename)
+    setError(null)
+    try {
+      await deleteFile(filename)
+      const updated = await listFiles()
+      setExisting(updated.files)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -183,6 +199,14 @@ export default function UploadPage() {
                 <div className="flex items-center gap-3 shrink-0 ml-4">
                   <span className="text-xs text-zinc-600 uppercase">{f.type}</span>
                   <span className="text-xs text-zinc-500">{fmt(f.size)}</span>
+                  <button
+                    onClick={() => handleDelete(f.name)}
+                    disabled={deleting === f.name}
+                    className="text-zinc-600 hover:text-red-400 disabled:opacity-40 disabled:cursor-not-allowed transition text-sm font-bold"
+                    title="Delete file and clear vectors"
+                  >
+                    {deleting === f.name ? '…' : '✕'}
+                  </button>
                 </div>
               </li>
             ))}

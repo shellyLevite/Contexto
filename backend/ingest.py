@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 DATA_DIR = Path(__file__).parent.parent / "data_export"
 SUPPORTED_EXTS = [".txt", ".json", ".csv", ".pdf"]
 COLLECTION_NAME = "documents"
+EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 EMBED_DIM = 384
 CHUNK_SIZE = 512
 CHUNK_OVERLAP = 50
@@ -104,15 +105,17 @@ def main() -> None:
         documents.extend(load_documents(f))
     logger.info("Loaded %d document(s) total.", len(documents))
 
-    # ── 2. Record file-level metadata ─────────────────────────────────────────
+    # ── 2. Record file-level metadata (once per source file, not per chunk) ───
+    seen_sources: set[str] = set()
     for doc in documents:
         source = doc.metadata.get("file_path") or doc.metadata.get("file_name", "unknown")
-        _record_metadata(source, _doc_type(source))
+        if source not in seen_sources:
+            seen_sources.add(source)
+            _record_metadata(source, _doc_type(source))
 
     # ── 3. Embed model ────────────────────────────────────────────────────────
-    embed_model_name = os.environ.get("EMBED_MODEL_NAME", "BAAI/bge-small-en-v1.5")
-    logger.info("Loading embedding model: %s  (this downloads on first run)", embed_model_name)
-    embed_model = HuggingFaceEmbedding(model_name=embed_model_name)
+    logger.info("Loading embedding model: %s  (this downloads on first run)", EMBED_MODEL)
+    embed_model = HuggingFaceEmbedding(model_name=EMBED_MODEL)
 
     # ── 4. Vector store ───────────────────────────────────────────────────────
     logger.info(

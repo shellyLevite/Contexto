@@ -33,3 +33,19 @@ export async function listFiles() {
   if (!response.ok) throw new Error(`Server error ${response.status}`)
   return response.json()
 }
+
+/**
+ * Delete a file from data_export/, wipe its vectors, and clear its metadata lock.
+ * @param {string} filename
+ * @returns {Promise<{ deleted: string }>}
+ */
+export async function deleteFile(filename) {
+  const response = await fetch(`${API_BASE}/api/files/${encodeURIComponent(filename)}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`Server error ${response.status}: ${text}`)
+  }
+  return response.json()
+}
