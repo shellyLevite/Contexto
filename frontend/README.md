@@ -1,16 +1,45 @@
-# React + Vite
+# Frontend (React + Vite)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This folder contains the CONTEXTO web UI.
 
-Currently, two official plugins are available:
+## What it does
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Chat view for asking questions against ingested personal data
+- Upload view for ingesting, listing, and deleting files
+- Calls backend endpoints under `VITE_API_BASE_URL`
 
-## React Compiler
+## Environment
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Create `frontend/.env`:
 
-## Expanding the ESLint configuration
+```env
+VITE_API_BASE_URL=http://localhost:8000
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Run locally
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+## Build
+
+```powershell
+npm run build
+npm run preview
+```
+
+## Main files
+
+- `src/App.jsx` - app shell and tab switching
+- `src/components/ChatWindow.jsx` - message history UI
+- `src/components/ChatInput.jsx` - prompt input + submit
+- `src/components/UploadPage.jsx` - ingest/list/delete UI
+- `src/api/chat.js` - `/api/chat` client
+- `src/api/ingest.js` - `/api/ingest` and file management clients
+
+## Full project docs
+
+See the root README: `../README.md`.
