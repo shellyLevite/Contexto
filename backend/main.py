@@ -21,7 +21,7 @@ from pathlib import Path
 
 print("[STARTUP] Base imports done", flush=True)
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -139,6 +139,58 @@ class FileListResponse(BaseModel):
     files: list[dict]
 
 
+def _process_ingest_in_background(saved_paths: list[Path]) -> None:
+    """Run the heavy embedding + upsert pipeline outside the request path."""
+    import os
+    from llama_index.core import StorageContext, VectorStoreIndex
+    from llama_index.core.node_parser import SentenceSplitter
+    from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+    from llama_index.vector_stores.supabase import SupabaseVectorStore
+    from ingest import _doc_type, _record_metadata
+
+    db_url = os.environ.get("SUPABASE_DB_URL")
+    if not db_url:
+        logger.error("Background ingest aborted: SUPABASE_DB_URL not configured.")
+        return
+
+    try:
+        documents = []
+        for p in saved_paths:
+            documents.extend(load_documents(p))
+
+        if not documents:
+            logger.warning("Background ingest: no documents parsed from %d file(s)", len(saved_paths))
+            return
+
+        embed_model = HuggingFaceEmbedding(model_name=EMBED_MODEL)
+        vector_store = SupabaseVectorStore(
+            postgres_connection_string=db_url,
+            collection_name=COLLECTION_NAME,
+            dimension=EMBED_DIM,
+        )
+        storage_context = StorageContext.from_defaults(vector_store=vector_store)
+        splitter = SentenceSplitter(chunk_size=512, chunk_overlap=50)
+
+        seen_sources: set[str] = set()
+        for doc in documents:
+            src = doc.metadata.get("file_path") or doc.metadata.get("file_name", "unknown")
+            if src not in seen_sources:
+                seen_sources.add(src)
+                _record_metadata(src, _doc_type(src))
+
+        VectorStoreIndex.from_documents(
+            documents,
+            storage_context=storage_context,
+            embed_model=embed_model,
+            transformations=[splitter],
+            show_progress=False,
+        )
+
+        logger.info("Background ingest complete: %s", [p.name for p in saved_paths])
+    except Exception:
+        logger.exception("Background ingest failed")
+
+
 @app.get("/api/files", response_model=FileListResponse, tags=["ingest"])
 def list_files():
     """Return all files currently sitting in data_export/."""
@@ -151,18 +203,13 @@ def list_files():
 
 
 @app.post("/api/ingest", response_model=IngestResponse, tags=["ingest"])
-async def ingest_files(files: list[UploadFile]):
+async def ingest_files(files: list[UploadFile], background_tasks: BackgroundTasks):
     """
     Upload one or more .txt / .json / .csv / .pdf files to data_export/ and run
     the embedding + upsert pipeline on each accepted file.
     Automatically detects WhatsApp exports and PDF files.
     """
     import os
-    from llama_index.core import StorageContext, VectorStoreIndex
-    from llama_index.core.node_parser import SentenceSplitter
-    from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-    from llama_index.vector_stores.supabase import SupabaseVectorStore
-    from ingest import _doc_type, _record_metadata
 
     db_url = os.environ.get("SUPABASE_DB_URL")
     if not db_url:
@@ -194,38 +241,9 @@ async def ingest_files(files: list[UploadFile]):
     if not saved_paths:
         return IngestResponse(ingested=[], skipped=skipped)
 
-    # Parse files with the appropriate parser (WhatsApp / PDF / generic)
-    documents = []
-    for p in saved_paths:
-        documents.extend(load_documents(p))
-
-    embed_model = HuggingFaceEmbedding(model_name=EMBED_MODEL)
-
-    vector_store = SupabaseVectorStore(
-        postgres_connection_string=db_url,
-        collection_name=COLLECTION_NAME,
-        dimension=EMBED_DIM,
-    )
-    storage_context = StorageContext.from_defaults(vector_store=vector_store)
-    splitter = SentenceSplitter(chunk_size=512, chunk_overlap=50)
-
-    seen_sources: set[str] = set()
-    for doc in documents:
-        src = doc.metadata.get("file_path") or doc.metadata.get("file_name", "unknown")
-        if src not in seen_sources:
-            seen_sources.add(src)
-            _record_metadata(src, _doc_type(src))
-
-    VectorStoreIndex.from_documents(
-        documents,
-        storage_context=storage_context,
-        embed_model=embed_model,
-        transformations=[splitter],
-        show_progress=False,
-    )
-
     ingested = [p.name for p in saved_paths]
-    logger.info("Ingest complete: %s", ingested)
+    background_tasks.add_task(_process_ingest_in_background, saved_paths)
+    logger.info("Ingest queued in background: %s", ingested)
     return IngestResponse(ingested=ingested, skipped=skipped)
 
 
