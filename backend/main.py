@@ -27,22 +27,16 @@ from pydantic import BaseModel, Field
 
 print("[STARTUP] FastAPI imports done", flush=True)
 
-from ingest import (
-    COLLECTION_NAME,
-    DATA_DIR,
-    EMBED_DIM,
-    EMBED_MODEL,
-    SUPPORTED_EXTS,
-    _doc_type,
-    _record_metadata,
-)
-
-print("[STARTUP] Ingest imports done", flush=True)
-
 from parsers import load_documents
-from rag import query as rag_query
 
-print("[STARTUP] Parser and RAG imports done", flush=True)
+print("[STARTUP] Parser imports done", flush=True)
+
+# Keep these local so app startup does not depend on importing ingest.py.
+DATA_DIR = Path(__file__).parent.parent / "data_export"
+SUPPORTED_EXTS = [".txt", ".json", ".csv", ".pdf"]
+COLLECTION_NAME = "documents"
+EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+EMBED_DIM = 384
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -68,7 +62,7 @@ print("[STARTUP] FastAPI app created", flush=True)
 print("[STARTUP] Adding CORS middleware...", flush=True)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "https://contexto-brown.vercel.app"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174", "https://contexto-brown.vercel.app"],
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],
 )
@@ -123,6 +117,8 @@ def chat(body: ChatRequest):
     and returns the generated answer together with the source file paths that
     were retrieved from the vector store.
     """
+    from rag import query as rag_query
+
     logger.info("Question: %r", body.question)
     result = rag_query(body.question)
     return ChatResponse(answer=result["answer"], sources=result["sources"])
@@ -166,6 +162,7 @@ async def ingest_files(files: list[UploadFile]):
     from llama_index.core.node_parser import SentenceSplitter
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
     from llama_index.vector_stores.supabase import SupabaseVectorStore
+    from ingest import _doc_type, _record_metadata
 
     db_url = os.environ.get("SUPABASE_DB_URL")
     if not db_url:
