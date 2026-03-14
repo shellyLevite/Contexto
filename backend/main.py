@@ -13,13 +13,19 @@ Start with:
     uvicorn main:app --reload --port 8000
 """
 
+print("[STARTUP] Starting main.py imports...", flush=True)
+
 import logging
 import time
 from pathlib import Path
 
+print("[STARTUP] Base imports done", flush=True)
+
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+print("[STARTUP] FastAPI imports done", flush=True)
 
 from ingest import (
     COLLECTION_NAME,
@@ -30,8 +36,13 @@ from ingest import (
     _doc_type,
     _record_metadata,
 )
+
+print("[STARTUP] Ingest imports done", flush=True)
+
 from parsers import load_documents
 from rag import query as rag_query
+
+print("[STARTUP] Parser and RAG imports done", flush=True)
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -40,23 +51,34 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+logger.info("Logging initialized")
 
 # ── App ───────────────────────────────────────────────────────────────────────
+print("[STARTUP] Creating FastAPI app...", flush=True)
 app = FastAPI(
     title="Personal Context Engine",
     version="0.1.0",
     docs_url="/docs",
     redoc_url=None,
 )
+print("[STARTUP] FastAPI app created", flush=True)
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 # Allow the Vite dev server and any local production build to reach the API.
+print("[STARTUP] Adding CORS middleware...", flush=True)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "https://contexto-brown.vercel.app"],
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],
 )
+print("[STARTUP] CORS middleware added", flush=True)
+
+@app.on_event("startup")
+async def startup():
+    logger.info("✅ App startup event triggered — ready to serve requests")
+    print("[STARTUP] ✅ App is fully initialized and listening", flush=True)
+
 
 # ── Request logging middleware ────────────────────────────────────────────────
 @app.middleware("http")
@@ -83,10 +105,14 @@ class ChatResponse(BaseModel):
     answer: str
     sources: list[str]
 
+print("[STARTUP] Registering routes...", flush=True)
 
-# ── Routes ────────────────────────────────────────────────────────────────────
 @app.get("/health", tags=["meta"])
 def health():
+    """Simple liveness check."""
+    return {"status": "ok"}
+
+print("[STARTUP] Health route registered", flush=True)
     """Simple liveness check."""
     return {"status": "ok"}
 
