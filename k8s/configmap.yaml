@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: finalboss-config
+data:
+  SUPABASE_URL: "https://your-project.supabase.co"
+  SUPABASE_DB_URL: "postgresql://postgres:password@db.your-project-ref.supabase.co:5432/postgres"
+  LLM_MODEL: "llama-3.1-8b-instant"
+  ENVIRONMENT: "production"

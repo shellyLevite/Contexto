@@ -14,14 +14,21 @@ You upload local data (TXT, JSON, CSV, PDF, and WhatsApp TXT exports), the backe
 - Upload, list, and delete indexed files from the UI
 - WhatsApp export parsing (multi-format date/time patterns)
 - PDF page-by-page ingestion
+- Dockerized with multi-stage builds (Python 3.11 backend, Nginx Alpine frontend)
+- Docker Compose for single-command local deployment
+- GitHub Actions CI pipeline (lint, build, Docker image validation)
+- Kubernetes manifests for production-grade deployment (Deployments, Services, ConfigMap, Secret)
 
 ## Tech Stack
 
 - Backend: Python, FastAPI, Uvicorn, LlamaIndex
-- Frontend: React 19, Vite
+- Frontend: React 19, Vite, Nginx (production)
 - Database: Supabase Postgres + pgvector
 - Embeddings: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 - LLM: Groq (default model from env)
+- Containerization: Docker, Docker Compose
+- CI/CD: GitHub Actions
+- Orchestration: Kubernetes
 
 ## Repository Layout
 
@@ -29,8 +36,14 @@ You upload local data (TXT, JSON, CSV, PDF, and WhatsApp TXT exports), the backe
 FinalBoss/
 |-- README.md
 |-- PHASES.md
+|-- docker-compose.yml              # One-command local deployment
+|-- .env.example                    # Root env template for Compose
 |-- data_export/                    # Uploaded and ingested files
+|-- .github/
+|   `-- workflows/
+|       `-- ci.yml                  # GitHub Actions CI pipeline
 |-- backend/
+|   |-- Dockerfile                  # Python 3.11-slim image
 |   |-- main.py                     # FastAPI app and routes
 |   |-- ingest.py                   # ETL: parse, chunk, embed, upsert
 |   |-- rag.py                      # Retrieval + prompt + LLM response
@@ -39,13 +52,22 @@ FinalBoss/
 |   |-- requirements.txt
 |   |-- .env.example
 |   `-- sql/schema.sql
-`-- frontend/
-    |-- src/App.jsx
-    |-- src/components/
-    |-- src/api/chat.js
-    |-- src/api/ingest.js
-    |-- package.json
-    `-- README.md
+|-- frontend/
+|   |-- Dockerfile                  # Multi-stage: Node build + Nginx Alpine
+|   |-- nginx.conf                  # Nginx reverse-proxy config
+|   |-- src/App.jsx
+|   |-- src/components/
+|   |-- src/api/chat.js
+|   |-- src/api/ingest.js
+|   |-- package.json
+|   `-- README.md
+`-- k8s/
+    |-- backend-deployment.yaml
+    |-- backend-service.yaml        # ClusterIP
+    |-- frontend-deployment.yaml
+    |-- frontend-service.yaml       # LoadBalancer
+    |-- configmap.yaml              # Non-secret env vars
+    `-- secret.yaml                 # Sensitive credentials template
 ```
 
 ## Prerequisites
@@ -55,6 +77,8 @@ FinalBoss/
 - npm
 - Supabase project
 - Groq API key
+- Docker & Docker Compose (for containerized setup)
+- kubectl + a Kubernetes cluster (for k8s deployment)
 
 ## Environment Variables
 
@@ -76,6 +100,16 @@ Create `frontend/.env`:
 ```env
 VITE_API_BASE_URL=http://localhost:8000
 ```
+
+For Docker Compose, create a root `.env` (copy from `.env.example`) with the same
+backend keys plus:
+
+```env
+VITE_API_BASE_URL=/api
+```
+
+The frontend container's Nginx proxies `/api/*` → `backend:8000` at runtime,
+so the browser never needs to know the internal service hostname.
 
 ## Database Setup (Supabase)
 
@@ -146,6 +180,67 @@ Frontend dev server:
 4. Open Chat tab and ask questions.
 5. Verify returned source file names in responses.
 
+## Docker
+
+### Run with Docker Compose
+
+```bash
+# Build and start both services
+docker compose up --build
+```
+
+- Frontend → http://localhost:80
+- Backend API → http://localhost:8000 (also proxied via frontend Nginx at /api)
+
+### Build images individually
+
+```bash
+# Backend (build context is repository root)
+docker build -t finalboss-backend -f backend/Dockerfile .
+
+# Frontend
+docker build -t finalboss-frontend ./frontend
+```
+
+## CI/CD (GitHub Actions)
+
+The pipeline at `.github/workflows/ci.yml` triggers on every push to `main`:
+
+| Job | What it does |
+|---|---|
+| `backend-lint` | Sets up Python 3.11, installs deps, runs `flake8` syntax check |
+| `frontend-build` | Sets up Node 20, runs `npm install` + `npm run build` |
+| `docker-build` | Builds both Docker images to validate Dockerfile correctness |
+
+The `docker-build` job only runs after both `backend-lint` and `frontend-build` pass.
+
+## Kubernetes
+
+Manifests live in `k8s/`. Apply in order:
+
+```bash
+# 1. Create non-secret config
+kubectl apply -f k8s/configmap.yaml
+
+# 2. Create secrets (fill real values in secret.yaml first, do NOT commit them)
+kubectl apply -f k8s/secret.yaml
+
+# 3. Deploy backend
+kubectl apply -f k8s/backend-deployment.yaml
+kubectl apply -f k8s/backend-service.yaml
+
+# 4. Deploy frontend
+kubectl apply -f k8s/frontend-deployment.yaml
+kubectl apply -f k8s/frontend-service.yaml
+```
+
+**Service types:**
+- `backend` → `ClusterIP` (internal only; the frontend Nginx proxy routes `/api/*` to it)
+- `frontend` → `LoadBalancer` (externally accessible)
+
+The frontend image embeds the Nginx reverse proxy config that forwards `/api/` and
+`/health` to `http://backend:8000`, matching the ClusterIP service name.
+
 ## Debugging
 
 - If chat fails with environment errors:
@@ -165,11 +260,14 @@ Frontend dev server:
 
 ## Current Status
 
-Core phases are implemented, including:
+Full stack implemented and containerized:
 
 - Upload/list/delete UI
 - Background ingest pipeline
 - Hybrid retrieval behavior in `rag.py` (exact token fetch + vector retrieval)
 - End-to-end chat responses with sources
+- Docker + Docker Compose deployment
+- GitHub Actions CI pipeline (lint → build → Docker validation)
+- Kubernetes manifests (Deployments, ClusterIP/LoadBalancer Services, ConfigMap, Secret)
 
 See `PHASES.md` for implementation history and milestone notes.
